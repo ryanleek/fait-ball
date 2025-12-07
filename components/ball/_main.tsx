@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "@/components/ball/header";
 import InputCard from "@/components/ball/input-card";
 import MagicBall from "@/components/ball/magic-ball";
 import QuestionDisplay from "@/components/ball/question-display";
+import PrivacyToggle from "@/components/ball/privacy-toggle";
 
 import {
     createInteraction,
@@ -14,7 +15,9 @@ import {
 import {
     instructions,
     dummyData,
-    UserInfo
+    UserInfo,
+    localInstructionsHide,
+    localInstructionsChange
 } from "@/lib/interaction/prompts";
 
 export default function BallPage({ user }: { user: string }) {
@@ -24,6 +27,7 @@ export default function BallPage({ user }: { user: string }) {
     const [isRevealed, setIsRevealed] = useState(false);
     const [askedQuestion, setAskedQuestion] = useState("");
     const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+    const [privacyMode, setPrivacyMode] = useState<'off' | 'hide' | 'substitute'>('off');
 
     // localStorage에서 사용자 정보 가져오기
     const getUserInfo = (): UserInfo => {
@@ -38,7 +42,44 @@ export default function BallPage({ user }: { user: string }) {
         return dummyData;
     };
 
-    const handleShake = () => {
+    // 프라이버시 모드 로드
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedPrivacyMode = localStorage.getItem('privacyMode') as 'off' | 'hide' | 'substitute' | null;
+            if (savedPrivacyMode) {
+                setPrivacyMode(savedPrivacyMode);
+            }
+        }
+    }, []);
+
+    // 프라이버시 모드 처리 함수
+    const processUserInfoForPrivacy = async (userInfo: UserInfo): Promise<string> => {
+        if (privacyMode === 'off') {
+            return JSON.stringify(userInfo, null, 2);
+        }
+
+        try {
+            const instructions = privacyMode === 'hide' ? localInstructionsHide : localInstructionsChange;
+            const input = [
+                { role: "system", content: instructions },
+                { role: "user", content: JSON.stringify(userInfo, null, 2) }
+            ];
+
+            const response = await getOpenAIChatResponse(instructions, input);
+            return response.text || JSON.stringify(userInfo, null, 2);
+        } catch (error) {
+            console.error('Error processing privacy mode:', error);
+            return JSON.stringify(userInfo, null, 2);
+        }
+    };
+
+    // 프라이버시 모드 변경 핸들러
+    const handlePrivacyModeChange = (mode: 'off' | 'hide' | 'substitute') => {
+        setPrivacyMode(mode);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('privacyMode', mode);
+        }
+    }; const handleShake = () => {
         if (!question.trim()) {
             alert("질문을 입력해주세요!");
             return;
@@ -53,9 +94,10 @@ export default function BallPage({ user }: { user: string }) {
         // AI 응답 생성 로직 실행
         setTimeout(async () => {
             try {
-                const userInfo = JSON.stringify(getUserInfo(), null, 2);
+                const rawUserInfo = getUserInfo();
+                const processedUserInfo = await processUserInfoForPrivacy(rawUserInfo);
                 const input = [
-                    { role: "system", content: `User Information: ${userInfo}` },
+                    { role: "system", content: `User Information: ${processedUserInfo}` },
                     { role: "user", content: currentQuestion }
                 ];
 
@@ -63,7 +105,7 @@ export default function BallPage({ user }: { user: string }) {
                 const selectedResponse = aiResponse.text || "답을 찾을 수 없습니다. 다시 시도해주세요.";
 
                 setResponse(selectedResponse);
-                createInteraction(currentQuestion, selectedResponse, "ai", generateKey(), user);
+                createInteraction(currentQuestion, selectedResponse, `local-${privacyMode}`, generateKey(), user);
                 setIsShaking(false);
                 setIsWaitingForResponse(true);
 
@@ -88,6 +130,13 @@ export default function BallPage({ user }: { user: string }) {
 
     return (
         <div className="max-w-md w-full space-y-8">
+            <div className="flex justify-end mb-4">
+                <PrivacyToggle
+                    mode={privacyMode}
+                    onChange={handlePrivacyModeChange}
+                />
+            </div>
+
             <Header />
 
             <div className="space-y-6">

@@ -62,3 +62,11 @@ Responses should be relevant to the user's recent activities and preferences.
 Be quirky and engaging in your tone.
 Keep your answers to a maximum of 15 words.
 `;
+
+export const localInstructionsHide = `
+Given the user data, hide sensitive personal information and return a safe version.
+`;
+
+export const localInstructionsChange = `
+Given the user data, substitute sensitive personal information with similar placeholders and return a safe version.
+`;
